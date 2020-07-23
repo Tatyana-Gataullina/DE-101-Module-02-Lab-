@@ -1,0 +1,157 @@
+
+--create dimensions tables (customer, product, manager, orders, calendar)
+--create sales_fact table
+
+CREATE TABLE "calendar_dim"
+(
+ "order_date" date,
+ "ship_date"  date,
+  CONSTRAINT "PK_calendar" PRIMARY KEY ( "order_date", "ship_date" )
+);
+
+CREATE TABLE "customer_dim"
+(
+ "customer_id"   varchar(10) NOT NULL,
+ "customer_name" varchar(50) NOT NULL,
+ "segment"      varchar(11) NOT NULL,
+ CONSTRAINT "PK_customer_dim" PRIMARY KEY ( "customer_id" )
+);
+
+CREATE TABLE "orders_dim"
+(
+ "order_id"    varchar(15) NOT NULL,
+ "ship_mode"   varchar(15) NOT NULL,
+ "ship_date"   date NOT NULL,
+ "country"     varchar(13) NOT NULL,
+ "city"        varchar(17) NOT NULL,
+ "state"       varchar(20) NULL,
+ "region"      varchar(7) NOT NULL,
+ "Postal_code" int NOT NULL,
+ CONSTRAINT "PK_geografy" PRIMARY KEY ( "order_id" )
+);
+
+CREATE TABLE "public"."dim_products"
+(
+ "category"     varchar(50) NOT NULL,
+ "prod_id"      int NOT NULL,
+ "sub_category" varchar(50) NOT NULL,
+ "product_name" varchar(255) NOT NULL,
+ "product_id"   varchar(25) NOT NULL,
+ CONSTRAINT "PK_dim_products" PRIMARY KEY ( "prod_id" )
+);
+
+
+CREATE TABLE "product_dim"
+(
+ "prod_row_id"  serial NOT NULL,
+ "product_id"   varchar(15) NOT NULL,
+ "category"     varchar(15) NOT NULL,
+ "sub-category" varchar(11) NOT NULL,
+ "product_name" varchar(127) NOT NULL,
+ CONSTRAINT "PK_product_dim" PRIMARY KEY ( "prod_row_id" )
+);
+
+ALTER TABLE "product_dim"
+RENAME COLUMN "sub-category" to "subcategory";
+
+CREATE TABLE "manager_dim"
+(
+ "manager_id" smallint NOT NULL,
+ "person"     varchar(50) NOT NULL,
+ "region"     varchar(50) NOT NULL,
+ CONSTRAINT "PK_manager_dim" PRIMARY KEY ( "manager_id" )
+);
+
+CREATE TABLE "orders_dim"
+(
+ "order_id"    varchar(15) NOT NULL,
+ "ship_mode"   varchar(15) NOT NULL,
+ "ship_date"   date NOT NULL,
+ "country"     varchar(13) NOT NULL,
+ "city"        varchar(17) NOT NULL,
+ "state"       varchar(20) NULL,
+ "region"      varchar(7) NOT NULL,
+ "Postal_code" int NULL,
+ "returned"    varchar(5) NULL,
+ CONSTRAINT "PK_geografy" PRIMARY KEY ( "order_id" )
+);
+
+ALTER TABLE "orders_dim"
+RENAME COLUMN "Postal_code" to "postal_code";
+
+drop TABLE "sales_fact_dim"
+CREATE TABLE "sales_fact_dim"
+(
+ "row_id"      integer NOT NULL,
+ "order_id"    varchar(15) NOT NULL,
+ "customer_id" varchar(10) NOT NULL,
+ "product_name" varchar(127) NULL,
+ "sales"       numeric(9,4) NOT NULL,
+ "quantity"    integer NOT NULL,
+ "discount"    numeric(4,2) NOT NULL,
+ "profit"      numeric(21,16) NOT NULL,
+ "manager_id"  smallint NULL,
+ "order_date"  date NULL,
+ "ship_date"   date NULL,
+ "prod_row_id" integer NULL,
+  CONSTRAINT "PK_sales_fact" PRIMARY KEY ( "row_id" ),
+ CONSTRAINT "FK_147" FOREIGN KEY ( "customer_id" ) REFERENCES "customer_dim" ( "customer_id" ),
+ CONSTRAINT "FK_170" FOREIGN KEY ( "manager_id" ) REFERENCES "manager_dim" ( "manager_id" ),
+ CONSTRAINT "FK_173" FOREIGN KEY ( "order_date", "ship_date" ) REFERENCES "calendar_dim" ( "order_date", "ship_date" ),
+ CONSTRAINT "FK_237" FOREIGN KEY ( "prod_row_id" ) REFERENCES "product_dim" ( "prod_row_id" ),
+ CONSTRAINT "FK_272" FOREIGN KEY ( "order_id" ) REFERENCES "orders_dim" ( "order_id" )
+);
+
+CREATE INDEX "fkIdx_147" ON "sales_fact_dim"
+(
+ "customer_id"
+);
+
+CREATE INDEX "fkIdx_170" ON "sales_fact_dim"
+(
+ "manager_id"
+);
+
+CREATE INDEX "fkIdx_173" ON "sales_fact_dim"
+(
+ "order_date",
+ "ship_date"
+);
+
+CREATE INDEX "fkIdx_237" ON "sales_fact_dim"
+(
+ "prod_row_id"
+);
+
+CREATE INDEX "fkIdx_272" ON "sales_fact_dim"
+(
+ "order_id"
+);
+
+
+insert into manager_dim (manager_id, person,region)
+select 100+row_number() over (), person,region from (select distinct person,region from people) a;
+
+insert into customer_dim  
+select distinct customer_id,  customer_name, segment from (select customer_id, customer_name, segment from orders) a;
+
+insert into calendar_dim (order_date, ship_date)
+select distinct order_date, ship_date from orders;
+
+insert into "product_dim"  ("prod_row_id", "product_id","category","subcategory", "product_name")
+select 100+row_number() over(), "product_id","category", "subcategory", "product_name" from (select distinct "product_id", "category", "subcategory", "product_name" from orders) a; --1862 unique products
+
+insert into orders_dim (order_id, ship_mode, ship_date, country, city, state, region, postal_code, returned)
+select order_id, ship_mode, ship_date, country, city, state, region, postal_code, returned from (select distinct o.order_id, o.ship_mode, o.ship_date, o.country, o.city, o.state, o.region, o.postal_code, r.returned from orders o left join returns r on r.order_id=o.order_id) t;
+
+truncate sales_fact_dim;
+insert into sales_fact_dim  (row_id, order_id, customer_id, product_name, sales, quantity, discount, profit, manager_id, order_date, ship_date, prod_row_id)
+select row_number() over(), o.order_id, customer_id, p.product_name, sales, quantity, discount, profit, manager_id, order_date, ship_date,prod_row_id from orders o, manager_dim m,  product_dim p;
+
+insert into sales_fact_dim  (row_id, order_id, customer_id, sales, quantity, discount, profit, manager_id, order_date, ship_date, prod_row_id)
+select row_number() over(), order_id, customer_id, sales, quantity, discount, profit, manager_id, order_date, ship_date, prod_row_id from (select o.order_id, cu.customer_id, o.sales, quantity, discount, profit,  m.manager_id, ca.order_date, ca.ship_date, p.prod_row_id from orders o 
+inner join product_dim p on o.product_id=p.product_id and o.product_name=p.product_name
+inner join calendar_dim ca on o.order_date=ca.order_date and o.ship_date=ca.ship_date
+inner join customer_dim cu on o.customer_id=cu.customer_id
+inner join orders_dim r on o.order_id=r.order_id 
+inner join manager_dim m on o.region=m.region) a; --9994 rows
