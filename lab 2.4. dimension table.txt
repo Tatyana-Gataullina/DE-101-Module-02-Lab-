@@ -79,7 +79,6 @@ CREATE TABLE "orders_dim"
 ALTER TABLE "orders_dim"
 RENAME COLUMN "Postal_code" to "postal_code";
 
-drop TABLE "sales_fact_dim"
 CREATE TABLE "sales_fact_dim"
 (
  "row_id"      integer NOT NULL,
